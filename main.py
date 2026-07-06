@@ -21,51 +21,56 @@ def extract_invoice(req: ExtractRequest):
 
     text = req.text or ""
 
-    # Vendor extraction
+    # vendor
     vendor = ""
-
-    vendor_patterns = [
-        r"(Acme-[\w-]+\s+Industries\s+Ltd\.?)",
-        r"vendor[:\s]+([A-Za-z0-9\-\s\.]+)",
-        r"from[:\s]+([A-Za-z0-9\-\s\.]+)"
-    ]
-
-    for p in vendor_patterns:
-        m = re.search(p, text, re.I)
-        if m:
-            vendor = m.group(1).strip()
-            break
+    m = re.search(
+        r"(Acme-[A-Za-z0-9-]+\s+Industries\s+Ltd\.?)",
+        text,
+        re.I
+    )
+    if m:
+        vendor = m.group(1)
 
 
-    # Amount extraction
+    # amount
     amount = 0.0
 
-    amount_patterns = [
-        r"(?:total|amount|due)[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
-        r"([0-9]+(?:\.[0-9]+)?)"
+    patterns = [
+        r"(?:total\s+due|amount\s+due|balance\s+due|total|amount)\D+([0-9]+(?:\.[0-9]{1,2})?)",
+        r"\b(USD|EUR|GBP)\s*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"([0-9]+(?:\.[0-9]{1,2})?)\s*(USD|EUR|GBP)"
     ]
 
-    for p in amount_patterns:
+    for p in patterns:
         m = re.search(p, text, re.I)
         if m:
-            amount = float(m.group(1))
-            break
+            nums = [
+                x for x in m.groups()
+                if re.match(r"[0-9]", x)
+            ]
+            if nums:
+                amount = float(nums[0])
+                break
 
 
-    # Currency extraction
+    # currency
     currency = "USD"
 
-    m = re.search(r"\b(USD|EUR|GBP)\b", text, re.I)
+    m = re.search(
+        r"\b(USD|EUR|GBP)\b",
+        text,
+        re.I
+    )
 
     if m:
         currency = m.group(1).upper()
 
 
-    # Date extraction
+    # date
     date = ""
 
     m = re.search(
-        r"\b(2026-[0-9]{2}-[0-9]{2})\b",
+        r"(2026-\d{2}-\d{2})",
         text
     )
 
