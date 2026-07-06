@@ -5,6 +5,8 @@ import time
 
 app = FastAPI()
 
+EMAIL = "24f2004664@ds.study.iitm.ac.in"
+
 LIMIT = 16
 WINDOW = 10
 
@@ -16,62 +18,60 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "Retry-After"],
 )
 
 
 @app.middleware("http")
-async def limiter(request: Request, call_next):
+async def rate_limit(request: Request, call_next):
 
-    client = request.headers.get(
-        "x-client-id",
-        request.client.host
+    client_id = request.headers.get(
+        "X-Client-Id",
+        "default"
     )
 
     now = time.time()
 
-    history = clients.get(client, [])
+    bucket = clients.get(client_id, [])
 
-    history = [
-        t for t in history
+    bucket = [
+        t for t in bucket
         if now - t < WINDOW
     ]
 
-    if len(history) >= LIMIT:
-        r = Response(
-            "Too many requests",
+    if len(bucket) >= LIMIT:
+        response = Response(
             status_code=429
         )
-        r.headers["Retry-After"] = "10"
-        return r
+        response.headers["Retry-After"] = "10"
+        return response
 
-    history.append(now)
-    clients[client] = history
+    bucket.append(now)
+    clients[client_id] = bucket
 
     return await call_next(request)
 
 
-
 @app.get("/ping")
 def ping(
-    response: Response,
-    request: Request
+    request: Request,
+    response: Response
 ):
 
-    rid = request.headers.get(
+    request_id = request.headers.get(
         "X-Request-ID"
     )
 
-    if not rid:
-        rid = str(uuid.uuid4())
+    if request_id is None:
+        request_id = str(uuid.uuid4())
 
     response.headers[
         "X-Request-ID"
-    ] = rid
+    ] = request_id
 
     return {
-        "email": "24f2004664@ds.study.iitm.ac.in",
-        "message": "pong",
-        "request_id": rid
+        "email": EMAIL,
+        "request_id": request_id
     }
 
 
