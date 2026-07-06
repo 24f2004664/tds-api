@@ -1,69 +1,81 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import Response
-from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
-import time
-import uuid
-from collections import deque
-from datetime import datetime
-
-EMAIL = "24f2004664@ds.study.iitm.ac.in"
+from fastapi import FastAPI
+from pydantic import BaseModel
+import re
 
 app = FastAPI()
 
-start_time = time.time()
 
-logs = deque(maxlen=1000)
-
-http_requests_total = Counter(
-    "http_requests_total",
-    "Total HTTP Requests"
-)
+class ExtractRequest(BaseModel):
+    text: str
 
 
-@app.middleware("http")
-async def middleware(request: Request, call_next):
-    http_requests_total.inc()
-
-    request_id = str(uuid.uuid4())
-
-    logs.append({
-        "level": "INFO",
-        "ts": datetime.utcnow().isoformat(),
-        "path": request.url.path,
-        "request_id": request_id
-    })
-
-    response = await call_next(request)
-    return response
+class InvoiceResponse(BaseModel):
+    vendor: str
+    amount: float
+    currency: str
+    date: str
 
 
-@app.get("/work")
-def work(n: int):
-    for _ in range(n):
-        pass
+@app.post("/extract", response_model=InvoiceResponse)
+def extract_invoice(req: ExtractRequest):
 
-    return {
-        "email": EMAIL,
-        "done": n
-    }
+    text = req.text or ""
+
+    # Vendor extraction
+    vendor = ""
+
+    vendor_patterns = [
+        r"(Acme-[\w-]+\s+Industries\s+Ltd\.?)",
+        r"vendor[:\s]+([A-Za-z0-9\-\s\.]+)",
+        r"from[:\s]+([A-Za-z0-9\-\s\.]+)"
+    ]
+
+    for p in vendor_patterns:
+        m = re.search(p, text, re.I)
+        if m:
+            vendor = m.group(1).strip()
+            break
 
 
-@app.get("/healthz")
-def health():
-    return {
-        "status": "ok",
-        "uptime_s": time.time() - start_time
-    }
+    # Amount extraction
+    amount = 0.0
+
+    amount_patterns = [
+        r"(?:total|amount|due)[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
+        r"([0-9]+(?:\.[0-9]+)?)"
+    ]
+
+    for p in amount_patterns:
+        m = re.search(p, text, re.I)
+        if m:
+            amount = float(m.group(1))
+            break
 
 
-@app.get("/metrics")
-def metrics():
-    return Response(
-        generate_latest(),
-        media_type=CONTENT_TYPE_LATEST
+    # Currency extraction
+    currency = "USD"
+
+    m = re.search(r"\b(USD|EUR|GBP)\b", text, re.I)
+
+    if m:
+        currency = m.group(1).upper()
+
+
+    # Date extraction
+    date = ""
+
+    m = re.search(
+        r"\b(2026-[0-9]{2}-[0-9]{2})\b",
+        text
     )
 
+    if m:
+        date = m.group(1)
 
-@app.get("/logs/tail")
-def tail(limit: int = 10):
-    return list(logs)[-limit:]
+
+    return {
+        "vendor": vendor,
+        "amount": amount,
+        "currency": currency,
+        "date": date
+    }
