@@ -1,82 +1,69 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-import uuid
 import time
+import uuid
 
 app = FastAPI()
 
 EMAIL = "24f2004664@ds.study.iitm.ac.in"
 
-LIMIT = 16
-WINDOW = 10
+ALLOWED_ORIGIN = "https://dash-yo1kg6.example.com"
 
-clients = {}
 
+# Strict CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        ALLOWED_ORIGIN
+    ],
     allow_credentials=False,
-    allow_methods=["*"],
+    allow_methods=["GET", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID", "Retry-After"],
 )
 
 
+# Required headers middleware
 @app.middleware("http")
-async def rate_limit(request: Request, call_next):
+async def add_headers(request: Request, call_next):
 
-    client_id = request.headers.get(
-        "X-Client-Id",
-        "default"
-    )
+    start = time.time()
 
-    now = time.time()
+    response = await call_next(request)
 
-    bucket = clients.get(client_id, [])
-
-    bucket = [
-        t for t in bucket
-        if now - t < WINDOW
-    ]
-
-    if len(bucket) >= LIMIT:
-        response = Response(
-            status_code=429
-        )
-        response.headers["Retry-After"] = "10"
-        return response
-
-    bucket.append(now)
-    clients[client_id] = bucket
-
-    return await call_next(request)
-
-
-@app.get("/ping")
-def ping(
-    request: Request,
-    response: Response
-):
-
-    request_id = request.headers.get(
-        "X-Request-ID"
-    )
-
-    if request_id is None:
-        request_id = str(uuid.uuid4())
+    duration = time.time() - start
 
     response.headers[
         "X-Request-ID"
-    ] = request_id
+    ] = str(uuid.uuid4())
+
+    response.headers[
+        "X-Process-Time"
+    ] = str(duration)
+
+    return response
+
+
+@app.get("/stats")
+def stats(values: str):
+
+    nums = [
+        int(x)
+        for x in values.split(",")
+        if x.strip()
+    ]
 
     return {
         "email": EMAIL,
-        "request_id": request_id
+        "count": len(nums),
+        "sum": sum(nums),
+        "min": min(nums),
+        "max": max(nums),
+        "mean": sum(nums) / len(nums)
     }
 
 
 @app.get("/")
 def home():
     return {
-        "status": "ok"
+        "status": "running"
     }
