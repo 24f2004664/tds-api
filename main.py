@@ -4,55 +4,59 @@ from pydantic import BaseModel
 from typing import List
 
 API_KEY = "ak_k6y590pvb5857adgly10ps41"
-EMAIL = "24f2004664@ds..study.iitm.ac.in"   # replace with your logged-in email
+EMAIL = "24f2004664@ds.study.iitm.ac.in"
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 class Event(BaseModel):
     user: str
     amount: float
     ts: int
 
-class Request(BaseModel):
+
+class AnalyticsRequest(BaseModel):
     events: List[Event]
+
+
+@app.get("/")
+def root():
+    return {"status": "running"}
 
 
 @app.post("/analytics")
 def analytics(
-    data: Request,
-    x_api_key: str = Header(None)
+    body: AnalyticsRequest,
+    x_api_key: str = Header(default=None)
 ):
     if x_api_key != API_KEY:
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized"
-        )
-
-    events = data.events
-
-    totals = {}
+        raise HTTPException(status_code=401)
 
     revenue = 0
+    user_totals = {}
 
-    for e in events:
-        if e.amount > 0:
-            revenue += e.amount
-            totals[e.user] = totals.get(e.user, 0) + e.amount
-
-    top_user = max(totals, key=totals.get) if totals else ""
+    for event in body.events:
+        if event.amount > 0:
+            revenue += event.amount
+            user_totals[event.user] = (
+                user_totals.get(event.user, 0)
+                + event.amount
+            )
 
     return {
         "email": EMAIL,
-        "total_events": len(events),
-        "unique_users": len(set(e.user for e in events)),
+        "total_events": len(body.events),
+        "unique_users": len(
+            set(e.user for e in body.events)
+        ),
         "revenue": revenue,
-        "top_user": top_user
+        "top_user": max(user_totals, key=user_totals.get)
     }
