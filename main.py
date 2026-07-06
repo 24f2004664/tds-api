@@ -69,6 +69,7 @@ def ping(
     ] = rid
 
     return {
+        "email": "24f2004664@ds.study.iitm.ac.in",
         "message": "pong",
         "request_id": rid
     }
